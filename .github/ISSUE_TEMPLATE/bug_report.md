@@ -1,19 +1,20 @@
 ---
-name: Bug or noisy hint
-about: Report a small reproducible problem or false positive
+name: Feedback or a problem
+about: Tell us whether a hint helped, was noisy, or failed to run
 title: ''
 labels: ''
 assignees: ''
 ---
 
-**Command and versions**
-Command, Python version, operating system, and commit/version:
+**What happened?**
+A short description is enough to start: useful hint, noisy hint, or a problem running the tool.
 
-**Minimal sanitized source**
-```python
-# A small example without credentials, private paths, or customer data.
-```
+**Command and output, if relevant**
+Remove private filenames or other sensitive details before pasting.
 
-**Expected and actual output**
+**For a reproducible problem, if available**
+- Python version and operating system:
+- Expected result:
+- Small sanitized source example:
 
-Please do not upload databases, secrets, or an entire private repository.
+Please do not attach a database, credentials, or an entire private repository.
