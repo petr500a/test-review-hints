@@ -1,13 +1,20 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "test-review-hints"
 version = "0.1.0"
 description = "Small local review hints for Python tests; it never runs or changes your code."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/petr500a/test-review-hints"
+Issues = "https://github.com/petr500a/test-review-hints/issues"
 
 [project.scripts]
 test-review-hints = "test_review_hints.cli:main"

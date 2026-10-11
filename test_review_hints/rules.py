@@ -3,7 +3,9 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+import os
 import re
+import tokenize
 
 
 @dataclass(frozen=True)
@@ -71,29 +73,51 @@ def _producer_reader(tree: ast.AST, rel: str) -> list[Finding]:
         producer = any(isinstance(x, ast.Call) and getattr(x.func, "attr", "") in {"emit", "insert", "publish", "append_event"} for x in ast.walk(node))
         reader = any(isinstance(x, ast.Call) and getattr(x.func, "attr", "") in {"get_all", "get_events", "fetchall", "fetchone", "query"} for x in ast.walk(node))
         if producer and reader:
-            findings.append(Finding("R43", rel, node.lineno, "test both produces and reads an event; review the tested boundary"))
+            findings.append(Finding("R43", rel, node.lineno, "test calls producer-like and reader-like methods; review the tested boundary"))
     return findings
 
 
-def scan_file(path: Path, root: Path | None = None) -> list[Finding]:
+def scan_file(path: Path, root: Path | None = None, *, include_boundary_hints: bool = False) -> list[Finding]:
     root = root or path.parent
     rel = str(path.relative_to(root)).replace("\\", "/")
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError) as exc:
-        return [Finding("PARSE", rel, 1, f"could not parse file: {type(exc).__name__}")]
-    return _path_hints(tree, rel) + _unreachable(tree, rel) + _producer_reader(tree, rel)
+        with tokenize.open(path) as source:
+            tree = ast.parse(source.read(), filename=str(path))
+    except (OSError, SyntaxError, UnicodeError, LookupError) as exc:
+        return [Finding("PARSE", rel, getattr(exc, "lineno", None) or 1,
+                        f"could not read or parse file: {type(exc).__name__}")]
+    findings = _path_hints(tree, rel) + _unreachable(tree, rel)
+    if include_boundary_hints:
+        findings += _producer_reader(tree, rel)
+    return findings
 
 
-def scan(paths: list[Path]) -> list[Finding]:
-    files: list[Path] = []
-    for path in paths:
-        if path.is_file() and path.suffix == ".py":
-            files.append(path)
-        elif path.is_dir():
-            files.extend(x for x in path.rglob("*.py") if "__pycache__" not in x.parts and ".venv" not in x.parts)
+def scan(paths: list[Path], *, include_boundary_hints: bool = False) -> list[Finding]:
+    files: dict[Path, tuple[Path, Path]] = {}
     findings: list[Finding] = []
-    for path in sorted(files):
-        root = paths[0] if paths and paths[0].is_dir() else path.parent
-        findings.extend(scan_file(path, root))
+
+    def walk_error(exc: OSError) -> None:
+        findings.append(Finding("INPUT", str(exc.filename), 1, f"could not read directory: {type(exc).__name__}"))
+
+    for path in paths:
+        candidates: list[Path] = []
+        if path.is_file() and path.suffix == ".py":
+            candidates.append(path)
+            root = path.parent
+        elif path.is_dir():
+            root = path
+            for directory, subdirs, names in os.walk(path, onerror=walk_error):
+                subdirs[:] = sorted(name for name in subdirs if name not in {"__pycache__", ".venv", ".git"})
+                candidates.extend(Path(directory) / name for name in names if name.endswith(".py"))
+            if not candidates:
+                findings.append(Finding("INPUT", str(path), 1, "no Python files found in directory"))
+        else:
+            findings.append(Finding("INPUT", str(path), 1, "expected an existing .py file or directory"))
+        for candidate in candidates:
+            files.setdefault(candidate.resolve(), (candidate, root))
+    for candidate, root in sorted(files.values()):
+        items = scan_file(candidate, root, include_boundary_hints=include_boundary_hints)
+        if len(paths) > 1:
+            items = [Finding(item.code, str(candidate), item.line, item.message) for item in items]
+        findings.extend(items)
     return findings
